@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Request
+import os
 
 app = FastAPI()
 
 def _last_user_text(messages):
-    if not isinstance(messages, list): 
+    if not isinstance(messages, list):
         return ""
     for m in reversed(messages):
         if isinstance(m, dict):
@@ -26,13 +27,18 @@ async def handle(req: Request):
         body = await req.json()
     except Exception:
         body = {}
-    user = _last_user_text(body.get("messages") or [])
-    emotion = (body.get("emotion") or "warm")
-
-    if not user:
-        text = f'<emotion value="{emotion}" /> Hi! I’m Samantha. Ask me anything—I’ll keep it brief.'
-    elif "story" in user.lower():
-        text = f'<emotion value="{emotion}" /> Tiny tale: a shy dragon found her voice by singing to the moon.'
+    u = _last_user_text(body.get("messages") or [])
+    emo = (body.get("emotion") or "warm")
+    if not u:
+        text = f'<emotion value="{emo}" /> Hi! I’m Samantha. Ask me anything—I’ll keep it brief.'
+    elif "story" in u.lower():
+        text = f'<emotion value="{emo}" /> Tiny tale: a shy dragon found her voice by singing to the moon.'
     else:
-        text = f'<emotion value="{emotion}" /> ' + _shorten(f"Got it: {user}. I’ll keep answers super short and fun.")
+        text = f'<emotion value="{emo}" /> ' + _shorten(f"Got it: {u}. I’ll keep answers super short and fun.")
     return {"text": text}
+
+# --- Cartesia builder requires an explicit uvicorn.run() ---
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
