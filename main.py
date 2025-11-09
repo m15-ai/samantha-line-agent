@@ -1,44 +1,43 @@
-from fastapi import FastAPI, Request
-import os
+from chat import ChatNode
+from prompts import get_initial_message
 
-app = FastAPI()
+from line import Bridge, CallRequest, VoiceAgentApp, VoiceAgentSystem
+from line.events import (
+    UserStartedSpeaking,
+    UserStoppedSpeaking,
+    UserTranscriptionReceived,
+)
 
-def _last_user_text(messages):
-    if not isinstance(messages, list):
-        return ""
-    for m in reversed(messages):
-        if isinstance(m, dict):
-            role = m.get("role")
-            txt = m.get("content") or m.get("message") or ""
-            if role in ("user", "sim_user") and isinstance(txt, str):
-                return txt.strip()
-    return ""
+# ---- call handler ----
+async def handle_new_call(system: VoiceAgentSystem, _call_request: CallRequest):
+    chat_node = ChatNode()
+    chat_bridge = Bridge(chat_node)
 
-def _shorten(s, n=140):
-    return s if len(s) <= n else s[:n-1] + "…"
+    # Route audio/speaking through the node
+    system.with_speaking_node(chat_node, chat_bridge)
 
-@app.get("/healthz")
-async def healthz():
-    return {"ok": True}
+    # Feed transcripts into the node
+    chat_bridge.on(UserTranscriptionReceived).map(chat_node.add_event)
 
-@app.post("/")
-async def handle(req: Request):
-    try:
-        body = await req.json()
-    except Exception:
-        body = {}
-    u = _last_user_text(body.get("messages") or [])
-    emo = (body.get("emotion") or "warm")
-    if not u:
-        text = f'<emotion value="{emo}" /> Hi! I’m Samantha. Ask me anything—I’ll keep it brief.'
-    elif "story" in u.lower():
-        text = f'<emotion value="{emo}" /> Tiny tale: a shy dragon found her voice by singing to the moon.'
-    else:
-        text = f'<emotion value="{emo}" /> ' + _shorten(f"Got it: {u}. I’ll keep answers super short and fun.")
-    return {"text": text}
+    # Stream responses; interrupt if the user starts talking again
+    (
+        chat_bridge.on(UserStoppedSpeaking)
+        .interrupt_on(UserStartedSpeaking, handler=chat_node.on_interrupt_generate)
+        .stream(chat_node.generate)
+        .broadcast()
+    )
 
-# --- Cartesia builder requires an explicit uvicorn.run() ---
+    # Start the voice system and optionally send the first message
+    await system.start()
+    init_msg = get_initial_message()
+    if init_msg:
+        await system.send_initial_message(init_msg)
+    await system.wait_for_shutdown()
+
+# ---- app ----
+app = VoiceAgentApp(handle_new_call)
+
+# Cartesia builder wants an explicit entrypoint
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    import os
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
