@@ -9,8 +9,3 @@ host = "0.0.0.0"
 
 [cartesia.environment]
 required_vars = ["GEMINI_API_KEY"]
-
-[agent]
-id = "agent_s9oKVCpUP744d8VgKmJAKy"
-name = "samantha-voice-agent"
-
