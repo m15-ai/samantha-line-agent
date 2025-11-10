@@ -1,4 +1,4 @@
-# Samantha Line Agent (Cartesia)
+# Cartesia Line Agent
 
 Ultra-minimal FastAPI app for Cartesia Line “Connect Your Code”.
 
